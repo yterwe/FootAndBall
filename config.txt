@@ -1,6 +1,6 @@
 [DEFAULT]
 
-issia_path=/data/share/jacek/issia
+issia_path=/kaggle/working/foot-and-ball
 issia_train_cameras=1,2,3,4
 issia_val_cameras=5
 
