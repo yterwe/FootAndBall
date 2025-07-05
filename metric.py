@@ -44,6 +44,7 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
             det_boxes = [b for b, l in zip(det["boxes"], det["labels"]) if l == class_id]
             det_scores = [s for s, l in zip(det["scores"], det["labels"]) if l == class_id]
             gt_boxes = [b for b, l in zip(gt["boxes"], gt["labels"]) if l == class_id]
+            print(f"Class {class_id}: {len(det_boxes)} detections vs {len(gt_boxes)} GT")
             matched = [False] * len(gt_boxes)
 
             for box, score in zip(det_boxes, det_scores):
