@@ -26,7 +26,7 @@ import metric
 import image
 from misc import utils
 from network import footandball
-from data import soccer_net, augmentation
+from data import augmentation, issia_dataset
 #import network.footandball as footandball
 #import data.augmentation as augmentations
 #from data.augmentation import PLAYER_LABEL, BALL_LABEL
@@ -47,15 +47,16 @@ def run_detector(model, args) -> t.Optional[np.array]:
         Intersection of union metric, if specified in args
     """
 
-    soccer_net_ = None
+    #soccer_net_ = None
+    issia_dataset_ = None
     start_frame = 0
 
     if args.metric_path:
         start_frame = int(Path(args.path).name.split(".")[0])
         metric_path = Path(args.metric_path)
-        soccer_net_ = soccer_net.SoccerNet(metric_path.parents[0])
-        soccer_net_.collect([metric_path.name])
-        if len(soccer_net_.gt) == 0:
+        issia_dataset_ = issia_dataset.IssiaDataset(metric_path.parents[0])
+        issia_dataset_.collect([metric_path.name])
+        if len(issia_dataset_.gt) == 0:
             raise EnvironmentError(
                 f"missing ground truth labels in {metric_path.name} directory"
             )
@@ -116,7 +117,7 @@ def run_detector(model, args) -> t.Optional[np.array]:
             detections = model(img_tensor)[0]
 
             if args.metric_path:
-                gt, gt_detected = metric.getGT(soccer_net_.gt[start_frame - 1])
+                gt, gt_detected = metric.getGT(issia_dataset_.gt[start_frame - 1])
 
                 det, det_detected = metric.getGT(detections["boxes"])
 
@@ -129,7 +130,7 @@ def run_detector(model, args) -> t.Optional[np.array]:
         # Display overlap of detection and gt for debug purposes
         if args.debug:
             frameGT = image.draw_bboxes(
-                frame, soccer_net_.gt[start_frame - 1], image.Color.GREEN
+                frame, issia_dataset_.gt[start_frame - 1], image.Color.GREEN
             )
             frameGT = image.draw_bboxes(frameGT, detections["boxes"], image.Color.RED)
             cv2.imshow("img", frameGT)
