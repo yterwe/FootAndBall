@@ -18,6 +18,7 @@ import torch.optim as optim
 
 from network import footandball
 from data.data_reader import make_dataloaders
+from data.issia_dataset import MultiFrameWrapperDataset
 from network.ssd_loss import SSDLoss
 from misc.config import Params
 from misc import utils
@@ -121,6 +122,11 @@ def train(params: Params):
     assert os.path.exists(MODEL_FOLDER), ' Cannot create folder to save trained model: {}'.format(MODEL_FOLDER)
 
     dataloaders = make_dataloaders(params)
+    num_frames = 3
+    for phase in dataloaders:
+        base_dataset = dataloaders[phase].dataset
+        wrapped_dataset = MultiFrameWrapperDataset(base_dataset, num_frames=num_frames)
+        dataloaders[phase].dataset = wrapped_dataset
     print('Training set: Dataset size: {}'.format(len(dataloaders['train'].dataset)))
     if 'val' in dataloaders:
         print('Validation set: Dataset size: {}'.format(len(dataloaders['val'].dataset)))
