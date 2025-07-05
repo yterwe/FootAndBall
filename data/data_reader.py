@@ -34,6 +34,7 @@ def make_dataloaders(params: Params):
                                         pin_memory=True, collate_fn=my_collate)
 
     train_dataset = train_issia_dataset
+    train_dataset = ConcatDataset([train_issia_dataset])
     batch_sampler = BalancedSampler(train_dataset)
     dataloaders['train'] = DataLoader(train_dataset, sampler=batch_sampler, batch_size=params.batch_size,
                                       num_workers=params.num_workers, pin_memory=True, collate_fn=my_collate)
