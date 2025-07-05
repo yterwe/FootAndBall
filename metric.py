@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from sklearn.metrics import average_precision_score
 import numpy as np
+from data.augmentation import PLAYER_LABEL, BALL_LABEL
 
 BALL_LABEL = 1
 PLAYER_LABEL = 2
