@@ -22,16 +22,20 @@ from network.ssd_loss import SSDLoss
 from misc.config import Params
 from misc import utils
 import matplotlib.pyplot as plt
+import metric
 
 MODEL_FOLDER = 'models'
 
 def plot_training_stats(training_stats, model_name):
-    metrics = ['loss', 'loss_ball_c', 'loss_player_c', 'loss_player_l']
+    metrics = ['loss', 'loss_ball_c', 'loss_player_c', 'loss_player_l', 
+               'val_ap_ball', 'val_ap_player', 'val_map']
     for metric in metrics:
         plt.figure()
         for phase in training_stats:
             values = [epoch_stats[metric] for epoch_stats in training_stats[phase]]
-            plt.plot(values, label=phase)
+            if len(values) == 0:
+                continue
+        plt.plot(values, label=phase)
         plt.title(f'{metric} over epochs')
         plt.xlabel('Epoch')
         plt.ylabel(metric)
@@ -115,6 +119,42 @@ def train_model(model, optimizer, scheduler, num_epochs, dataloaders, device, mo
                 avg_batch_stats[e] = np.mean(batch_stats[e])
 
             training_stats[phase].append(avg_batch_stats)
+
+            # Optionally evaluate mAP during validation
+            if phase == 'val':
+                all_detections = []
+                all_groundtruths = []
+            
+                for images, boxes, labels in dataloaders['val']:
+                    images = images.to(device)
+                    with torch.no_grad():
+                        outputs = model(images)
+                    for i in range(len(images)):
+                        preds = {
+                            "boxes": outputs[i]["boxes"],
+                            "scores": outputs[i]["scores"],
+                            "labels": outputs[i]["labels"]
+                        }
+                        gts = {
+                            "boxes": boxes[i],
+                            "labels": labels[i]
+                        }
+                        all_detections.append(preds)
+                        all_groundtruths.append(gts)
+            
+                ap_results = metric.compute_ap_map(all_detections, all_groundtruths)
+            
+                print(f'[Validation AP] Ball AP: {ap_results.get(0, 0.0):.4f}, '
+                      f'Player AP: {ap_results.get(1, 0.0):.4f}, '
+                      f'mAP: {ap_results.get("mAP", 0.0):.4f}')
+            
+                # Add to stats so you can plot/save later if needed
+                avg_batch_stats['val_ap_ball'] = ap_results.get(0, 0.0)
+                avg_batch_stats['val_ap_player'] = ap_results.get(1, 0.0)
+                avg_batch_stats['val_map'] = ap_results.get("mAP", 0.0)
+
+
+            
             s = '{} Avg. loss total / ball conf. / player conf. / player loc.: {:.4f} / {:.4f} / {:.4f} / {:.4f}'
             print(s.format(phase, avg_batch_stats['loss'], avg_batch_stats['loss_ball_c'],
                            avg_batch_stats['loss_player_c'], avg_batch_stats['loss_player_l']))
