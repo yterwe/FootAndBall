@@ -51,6 +51,13 @@ def run_detector(model, args) -> t.Optional[np.array]:
     issia_dataset_ = None
     start_frame = 0
 
+    # Intersection over Union
+    iou = []
+    # Ratio of number of detected players to number of ground truth labels
+    detected = []
+    all_detections = []
+    all_ground_truths = []
+
     if args.metric_path:
         start_frame = int(Path(args.path).name.split(".")[0])
         metric_path = Path(args.metric_path)
@@ -98,10 +105,6 @@ def run_detector(model, args) -> t.Optional[np.array]:
     print(f"Processing video: {args.path}")
     pbar = tqdm.tqdm(total=n_frames)
 
-    # Intersection over Union
-    iou = []
-    # Ratio of number of detected players to number of ground truth labels
-    detected = []
     while sequence.isOpened():
 
         ret, frame = sequence.read()
@@ -126,6 +129,18 @@ def run_detector(model, args) -> t.Optional[np.array]:
                 else:
                     detected.append(det_detected / gt_detected)
                 iou.append(metric.IoU(det, gt))
+                
+                frame_detections = {
+                    "boxes": detections["boxes"],
+                    "scores": detections["scores"],
+                    "labels": detections["labels"]
+                }
+                frame_ground_truths = {
+                    "boxes": [gt_box[:4] for gt_box in issia_dataset_.gt[start_frame - 1]],
+                    "labels": [int(gt_box[4]) for gt_box in issia_dataset_.gt[start_frame - 1]]
+                }
+                all_detections.append(frame_detections)
+                all_ground_truths.append(frame_ground_truths)
 
         # Display overlap of detection and gt for debug purposes
         if args.debug:
@@ -147,7 +162,7 @@ def run_detector(model, args) -> t.Optional[np.array]:
     sequence.release()
     out_sequence.release()
 
-    return iou, detected
+    return iou, detected, all_detections, all_ground_truths
 
 
 def main():
@@ -255,11 +270,41 @@ def main():
     args.out_video = os.path.join(run_dir, args.out_video)
     # RUN DETECTOR
     try:
-        metric, detected = run_detector(model, args)
+        #metric, detected = run_detector(model, args)
+        iou, detected, all_detections, all_ground_truths = run_detector(model, args)
     # pylint: disable=broad-except
     except Exception as err:
         logging.error(err)
         return 1
+
+    if len(iou) > 0:
+        try:
+            with open(
+                os.path.join(run_dir, "iou.json"), "w", encoding="utf-8"
+            ) as outfile:
+                json.dump(
+                    {
+                        "raw": iou,
+                        "avg": np.mean(iou),
+                        "std": np.std(iou),
+                        "detected_ratio": np.mean(detected),
+                    },
+                    outfile,
+                    indent=2,
+                )
+
+            # 计算并保存 AP 和 mAP@0.5
+            ap_results = metric.compute_ap_map(all_detections, all_ground_truths)
+            with open(os.path.join(run_dir, "ap_results.json"), "w", encoding="utf-8") as apfile:
+                json.dump({
+                    "ball_ap": ap_results.get(0, 0.0),
+                    "player_ap": ap_results.get(1, 0.0),
+                    "mAP@0.5": ap_results.get('mAP', 0.0)
+                }, apfile, indent=2)
+
+        except EnvironmentError as err:
+            logging.error(err)
+            return 1
 
     if len(metric) > 0:
         try:
