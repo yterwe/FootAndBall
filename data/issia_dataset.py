@@ -137,3 +137,22 @@ def create_issia_dataset(dataset_path, cameras, mode, only_ball_frames=False):
 
     dataset = IssiaDataset(dataset_path, cameras, transform, only_ball_frames=only_ball_frames)
     return dataset
+
+class MultiFrameWrapperDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, num_frames=3):
+        self.dataset = dataset
+        self.num_frames = num_frames
+        self.half = num_frames // 2
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        frames = []
+        for offset in range(-self.half, self.half + 1):
+            neighbor_idx = min(max(0, idx + offset), len(self.dataset) - 1)
+            img, _, _ = self.dataset[neighbor_idx]  # unpack image only
+            frames.append(img)
+        stacked = torch.cat(frames, dim=0)  # shape = [3 * num_frames, H, W]
+        _, boxes, labels = self.dataset[idx]  # 用中间帧的 label
+        return stacked, boxes, labels
