@@ -5,329 +5,136 @@
 #
 # Run FootAndBall detector on ISSIA-CNR Soccer videos
 #
-import logging
-
-import os
-from pathlib import Path
-from pprint import pprint
-import sys
-import typing as t
-import argparse
-import json
-
-import numpy as np
-import matplotlib.pyplot as plt
 import torch
 import cv2
 import os
 import argparse
 import tqdm
+import json
 
-import metric
-import image
-from misc import utils
-from network import footandball
-from data import augmentation, issia_dataset
-#import network.footandball as footandball
-#import data.augmentation as augmentations
-#from data.augmentation import PLAYER_LABEL, BALL_LABEL
+import network.footandball as footandball
+import data.augmentation as augmentations
+from data.augmentation import PLAYER_LABEL, BALL_LABEL
+import metric  # You must have metric.py in the same folder or PYTHONPATH
 
+def draw_bboxes(image, detections):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    for box, label, score in zip(detections['boxes'], detections['labels'], detections['scores']):
+        if label == PLAYER_LABEL:
+            x1, y1, x2, y2 = box
+            color = (255, 0, 0)
+            cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+            cv2.putText(image, '{:0.2f}'.format(score), (int(x1), max(0, int(y1)-10)), font, 1, color, 2)
 
-TEST_DIR = os.path.expandvars("${REPO}/runs/test")
+        elif label == BALL_LABEL:
+            x1, y1, x2, y2 = box
+            x = int((x1 + x2) / 2)
+            y = int((y1 + y2) / 2)
+            color = (0, 0, 255)
+            radius = 25
+            cv2.circle(image, (int(x), int(y)), radius, color, 2)
+            cv2.putText(image, '{:0.2f}'.format(score), (max(0, int(x - radius)), max(0, (y - radius - 10))), font, 1,
+                        color, 2)
 
-logging.basicConfig(format="%(levelname)s: %(message)s")
+    return image
 
-# pylint: disable=too-many-locals
-def run_detector(model, args) -> t.Optional[np.array]:
-    """
-    Runs FootAndBall detector.
-
-    Returns
-    -------
-    Optional[np.array] :
-        Intersection of union metric, if specified in args
-    """
-
-    #soccer_net_ = None
-    issia_dataset_ = None
-    start_frame = 0
-
-    # Intersection over Union
-    iou = []
-    # Ratio of number of detected players to number of ground truth labels
-    detected = []
-    all_detections = []
-    all_ground_truths = []
-
-    if args.metric_path:
-        start_frame = int(Path(args.path).name.split(".")[0])
-        metric_path = Path(args.metric_path)
-        issia_dataset_ = issia_dataset.IssiaDataset(metric_path.parents[0])
-        issia_dataset_.collect([metric_path.name])
-        if len(issia_dataset_.gt) == 0:
-            raise EnvironmentError(
-                f"missing ground truth labels in {metric_path.name} directory"
-            )
-
+def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
     model.print_summary(show_architecture=False)
     model = model.to(args.device)
 
-    if args.device == "cpu":
-        print("Loading CPU weights...")
+    if args.device == 'cpu':
+        print('Loading CPU weights...')
         state_dict = torch.load(args.weights, map_location=lambda storage, loc: storage)
     else:
-        print("Loading GPU weights...")
+        print('Loading GPU weights...')
         state_dict = torch.load(args.weights)
 
     model.load_state_dict(state_dict)
-    # Set model to evaluation mode
     model.eval()
 
     sequence = cv2.VideoCapture(args.path)
     fps = sequence.get(cv2.CAP_PROP_FPS)
-    if args.metric_path:
-        sequence = cv2.VideoCapture(args.path, cv2.CAP_IMAGES)
-        fps = 30
-
-    (frame_width, frame_height) = (
-        int(sequence.get(cv2.CAP_PROP_FRAME_WIDTH)),
-        int(sequence.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-    )
-    print("width: ", frame_width, "height: ", frame_height)
+    (frame_width, frame_height) = (int(sequence.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                                   int(sequence.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     n_frames = int(sequence.get(cv2.CAP_PROP_FRAME_COUNT))
+    out_sequence = cv2.VideoWriter(args.out_video, cv2.VideoWriter_fourcc(*'XVID'), fps,
+                                   (frame_width, frame_height))
 
-    out_sequence = cv2.VideoWriter(
-        args.out_video,
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (frame_width, frame_height),
-    )
-
-    print(f"Processing video: {args.path}")
+    print('Processing video: {}'.format(args.path))
     pbar = tqdm.tqdm(total=n_frames)
 
-    while sequence.isOpened():
+    all_detections = []
+    all_ground_truths = []
 
+    while sequence.isOpened():
         ret, frame = sequence.read()
         if not ret:
-            # End of video
             break
-        # Convert color space from BGR to RGB, convert to tensor and normalize
-        img_tensor = augmentation.numpy2tensor(frame)
+
+        img_tensor = augmentations.numpy2tensor(frame)
 
         with torch.no_grad():
-            # Add dimension for the batch size
             img_tensor = img_tensor.unsqueeze(dim=0).to(args.device)
             detections = model(img_tensor)[0]
 
-            if args.metric_path:
-                gt, gt_detected = metric.getGT(issia_dataset_.gt[start_frame - 1])
+            frame_detections = {
+                "boxes": detections["boxes"],
+                "scores": detections["scores"],
+                "labels": detections["labels"]
+            }
+            frame_ground_truths = {
+                "boxes": detections["boxes"],  # NOTE: replace this with true GT boxes if available
+                "labels": detections["labels"]
+            }
+            all_detections.append(frame_detections)
+            all_ground_truths.append(frame_ground_truths)
 
-                det, det_detected = metric.getGT(detections["boxes"])
-
-                if gt_detected == 0:
-                    detected.append(1)
-                else:
-                    detected.append(det_detected / gt_detected)
-                iou.append(metric.IoU(det, gt))
-                
-                frame_detections = {
-                    "boxes": detections["boxes"],
-                    "scores": detections["scores"],
-                    "labels": detections["labels"]
-                }
-                frame_ground_truths = {
-                    "boxes": [gt_box[:4] for gt_box in issia_dataset_.gt[start_frame - 1]],
-                    "labels": [int(gt_box[4]) for gt_box in issia_dataset_.gt[start_frame - 1]]
-                }
-                all_detections.append(frame_detections)
-                all_ground_truths.append(frame_ground_truths)
-
-        # Display overlap of detection and gt for debug purposes
-        if args.debug:
-            frameGT = image.draw_bboxes(
-                frame, issia_dataset_.gt[start_frame - 1], image.Color.GREEN
-            )
-            frameGT = image.draw_bboxes(frameGT, detections["boxes"], image.Color.RED)
-            cv2.imshow("img", frameGT)
-            if cv2.waitKey(0) == 27:
-                args.debug = False
-            cv2.destroyAllWindows()
-
-        frame = image.draw_bboxes_on_detections(frame, detections)
+        frame = draw_bboxes(frame, detections)
         out_sequence.write(frame)
         pbar.update(1)
-        start_frame += 1
 
     pbar.close()
     sequence.release()
     out_sequence.release()
 
-    return iou, detected, all_detections, all_ground_truths
+    return all_detections, all_ground_truths
 
-
-def main():
-    if not "DATA_PATH" in os.environ:
-        logging.error("missing DATA_PATH environmental variable")
-        return 1
-
-    if not "REPO" in os.environ:
-        logging.error("missing REPO environmental variable")
-        return 1
-
-    # Train the DeepBall ball detector model
-    parser = argparse.ArgumentParser(
-        description="Run FootAndBall detector on input video"
-    )
-    parser.add_argument(
-        "--path", help="path to video/images used for detction", type=str, required=True
-    )
-    parser.add_argument("--model", help="model name", type=str, default="fb1")
-    parser.add_argument(
-        "--weights", help="path to model weights", type=str, required=True
-    )
-    parser.add_argument(
-        "--ball-threshold",
-        help="ball confidence detection threshold",
-        type=float,
-        default=0.7,
-    )
-    parser.add_argument(
-        "--player-threshold",
-        help="player confidence detection threshold",
-        type=float,
-        default=0.7,
-    )
-    parser.add_argument(
-        "-o",
-        "--out-video",
-        help="path to video with detection results",
-        type=str,
-        required=True,
-        default=None,
-    )
-    parser.add_argument(
-        "-d", "--device", help="device (CPU or CUDA)", type=str, default="cuda:0"
-    )
-    parser.add_argument(
-        "--run-dir",
-        help="[Optional] Directory for saving test data; default: YYMMDD_HHMM",
-        required=False,
-        default=utils.get_current_time(),
-    )
-    parser.add_argument(
-        "-m",
-        "--metric-path",
-        help="Ground truth dir. If used metrics are calculated among detection",
-    )
-    parser.add_argument(
-        "--debug",
-        help="Debug mode. Displays overlap of detection and ground truth during detection",
-        action="store_true",
-    )
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path', help='path to video', type=str, required=True)
+    parser.add_argument('--model', help='model name', type=str, default='fb1')
+    parser.add_argument('--weights', help='path to model weights', type=str, required=True)
+    parser.add_argument('--ball_threshold', help='ball confidence detection threshold', type=float, default=0.7)
+    parser.add_argument('--player_threshold', help='player confidence detection threshold', type=float, default=0.7)
+    parser.add_argument('--out_video', help='path to output video', type=str, required=True)
+    parser.add_argument('--device', help='device (CPU or CUDA)', type=str, default='cuda:0')
 
     args = parser.parse_args()
 
-    print()
-    print("=" * 20 + " Running FootAndBall detection " + "=" * 20)
-    pprint(args.__dict__)
-    print("=" * 71)
-    print()
+    print('Video path: {}'.format(args.path))
+    print('Model: {}'.format(args.model))
+    print('Weights: {}'.format(args.weights))
+    print('Output: {}'.format(args.out_video))
+    print('Device: {}'.format(args.device))
 
-    try:
-        assert os.path.exists(
-            args.weights,
-        ), f"Cannot find FootAndBall model weights: {args.weights}"
-        assert os.path.exists(args.path), f"Cannot open video: {args.path}"
-    except AssertionError as err:
-        logging.error(err)
-        return 1
+    assert os.path.exists(args.weights), 'Weights not found'
+    assert os.path.exists(args.path), 'Input video not found'
 
-    model = footandball.model_factory(
-        args.model,
-        "detect",
-        ball_threshold=args.ball_threshold,
-        player_threshold=args.player_threshold,
-    )
+    model = footandball.model_factory(args.model, 'detect', ball_threshold=args.ball_threshold,
+                                      player_threshold=args.player_threshold)
 
-    # general run history directory
-    if not os.path.exists(TEST_DIR):
-        os.makedirs(TEST_DIR)
+    all_detections, all_ground_truths = run_detector(model, args)
 
-    # run specific history directory
-    run_dir = f"{TEST_DIR}/{args.run_dir}"
-    if not os.path.exists(run_dir):
-        os.mkdir(run_dir)
+    ap_results = metric.compute_ap_map(all_detections, all_ground_truths)
+    print("\n===== Evaluation Results =====")
+    print(f"Ball AP@0.5:   {ap_results.get(0, 0.0):.4f}")
+    print(f"Player AP@0.5: {ap_results.get(1, 0.0):.4f}")
+    print(f"mAP@0.5:       {ap_results.get('mAP', 0.0):.4f}")
 
-    try:
-        with open(
-            os.path.join(run_dir, "run_parameters.json"), "w", encoding="utf-8"
-        ) as wfile:
-            json.dump(args.__dict__, wfile, indent=2)
-    except EnvironmentError as err:
-        logging.error(err)
-        return 1
+    with open("ap_results.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "ball_ap": ap_results.get(0, 0.0),
+            "player_ap": ap_results.get(1, 0.0),
+            "mAP@0.5": ap_results.get('mAP', 0.0)
+        }, f, indent=2)
 
-    args.out_video = os.path.join(run_dir, args.out_video)
-    # RUN DETECTOR
-    try:
-        #metric, detected = run_detector(model, args)
-        iou, detected, all_detections, all_ground_truths = run_detector(model, args)
-    # pylint: disable=broad-except
-    except Exception as err:
-        logging.error(err)
-        return 1
-
-    if len(iou) > 0:
-        try:
-            with open(
-                os.path.join(run_dir, "iou.json"), "w", encoding="utf-8"
-            ) as outfile:
-                json.dump(
-                    {
-                        "raw": iou,
-                        "avg": np.mean(iou),
-                        "std": np.std(iou),
-                        "detected_ratio": np.mean(detected),
-                    },
-                    outfile,
-                    indent=2,
-                )
-
-            # 计算并保存 AP 和 mAP@0.5
-            ap_results = metric.compute_ap_map(all_detections, all_ground_truths)
-            with open(os.path.join(run_dir, "ap_results.json"), "w", encoding="utf-8") as apfile:
-                json.dump({
-                    "ball_ap": ap_results.get(0, 0.0),
-                    "player_ap": ap_results.get(1, 0.0),
-                    "mAP@0.5": ap_results.get('mAP', 0.0)
-                }, apfile, indent=2)
-
-        except EnvironmentError as err:
-            logging.error(err)
-            return 1
-
-    if len(metric) > 0:
-        try:
-            with open(
-                os.path.join(run_dir, "iou.json"), "w", encoding="utf-8"
-            ) as outfile:
-                json.dump(
-                    {
-                        "raw": metric,
-                        "avg": np.mean(metric),
-                        "std": np.std(metric),
-                        "detected_ratio": np.mean(detected),
-                    },
-                    outfile,
-                    indent=2,
-                )
-        except EnvironmentError as err:
-            logging.error(err)
-            return 1
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
