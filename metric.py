@@ -5,12 +5,7 @@ import numpy as np
 import torch
 from sklearn.metrics import average_precision_score
 import numpy as np
-from data.augmentation import PLAYER_LABEL, BALL_LABEL
-
-BALL_LABEL = 1
-PLAYER_LABEL = 2
-BALL_BBOX_SIZE = 40  # Adjust if needed
-
+from data.augmentation import PLAYER_LABEL, BALL_LABEL, BALL_BBOX_SIZE
 
 def IoU_box(box1, box2):
     """Compute IoU between two boxes in [x1, y1, x2, y2] format"""
@@ -40,15 +35,22 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5):
     class_ids = [BALL_LABEL, PLAYER_LABEL]  # [1, 2]
 
     for class_id in class_ids:
-        y_true = []
-        y_scores = []
-
+        # 收集所有检测结果和真实标签
+        all_detections = []
+        all_gt_count = 0
+        
         for det, gt in zip(detections, ground_truths):
+            # 获取当前类别的检测结果
             det_boxes = [b for b, l in zip(det["boxes"], det["labels"]) if l == class_id]
             det_scores = [s for s, l in zip(det["scores"], det["labels"]) if l == class_id]
             gt_boxes = [b for b, l in zip(gt["boxes"], gt["labels"]) if l == class_id]
+            
+            # 统计真实目标数量
+            all_gt_count += len(gt_boxes)
+            
+            # 为当前帧的检测结果匹配GT
             matched = [False] * len(gt_boxes)
-
+            
             for box, score in zip(det_boxes, det_scores):
                 iou_max = 0.0
                 matched_idx = -1
@@ -57,24 +59,57 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5):
                     if iou > iou_max:
                         iou_max = iou
                         matched_idx = i
-                if iou_max >= iou_threshold and matched_idx != -1 and not matched[matched_idx]:
-                    y_true.append(1)
+                
+                # 判断是否为真正例
+                is_tp = (iou_max >= iou_threshold and 
+                        matched_idx != -1 and 
+                        not matched[matched_idx])
+                
+                if is_tp:
                     matched[matched_idx] = True
-                else:
-                    y_true.append(0)
-                y_scores.append(score)
-
-            for m in matched:
-                if not m:
-                    y_true.append(1)
-                    y_scores.append(0)
-
-        if len(y_true) == 0 or len(set(y_true)) == 1:
+                
+                # 添加检测结果 (score, is_tp)
+                all_detections.append((score, is_tp))
+        
+        # 按置信度降序排列
+        all_detections.sort(key=lambda x: x[0], reverse=True)
+        
+        # 计算精度和召回率
+        if len(all_detections) == 0:
+            aps[class_id] = 0.0
+            continue
+            
+        if all_gt_count == 0:
+            aps[class_id] = 0.0
+            continue
+        
+        # 计算累积的TP和FP
+        tp_cumsum = 0
+        fp_cumsum = 0
+        precisions = []
+        recalls = []
+        
+        for score, is_tp in all_detections:
+            if is_tp:
+                tp_cumsum += 1
+            else:
+                fp_cumsum += 1
+            
+            precision = tp_cumsum / (tp_cumsum + fp_cumsum)
+            recall = tp_cumsum / all_gt_count
+            
+            precisions.append(precision)
+            recalls.append(recall)
+        
+        # 使用sklearn计算AP (更简单的方法)
+        y_true = [int(is_tp) for _, is_tp in all_detections]
+        y_scores = [score.cpu().item() if torch.is_tensor(score) else score 
+                   for score, _ in all_detections]
+        
+        if len(set(y_true)) <= 1:  # 全是TP或全是FP
             aps[class_id] = 0.0
         else:
-            aps[class_id] = average_precision_score(
-                y_true, [s.cpu().item() if torch.is_tensor(s) else s for s in y_scores]
-            )
+            aps[class_id] = average_precision_score(y_true, y_scores)
 
     aps['mAP'] = np.mean(list(aps.values()))
     return aps
