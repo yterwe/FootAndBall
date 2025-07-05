@@ -130,14 +130,14 @@ if __name__ == '__main__':
         ap_results = metric.compute_ap_map(all_detections, gt_by_frame)
 
         print("\n===== Evaluation Results =====")
-        print(f"Ball AP@0.5:   {ap_results.get(0, 0.0):.4f}")
-        print(f"Player AP@0.5: {ap_results.get(1, 0.0):.4f}")
+        print(f"Ball AP@0.5:   {ap_results.get(BALL_LABEL, 0.0):.4f}")
+        print(f"Player AP@0.5: {ap_results.get(PLAYER_LABEL, 0.0):.4f}")
         print(f"mAP@0.5:       {ap_results.get('mAP', 0.0):.4f}")
 
         with open("ap_results.json", "w", encoding="utf-8") as f:
             json.dump({
-                "ball_ap": ap_results.get(0, 0.0),
-                "player_ap": ap_results.get(1, 0.0),
+                "ball_ap": ap_results.get(BALL_LABEL, 0.0),
+                "player_ap": ap_results.get(PLAYER_LABEL, 0.0),
                 "mAP@0.5": ap_results.get('mAP', 0.0)
             }, f, indent=2)
     else:
