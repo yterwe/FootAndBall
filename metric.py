@@ -8,7 +8,7 @@ import numpy as np
 
 BALL_LABEL = 0
 PLAYER_LABEL = 1
-BALL_BBOX_SIZE = 50  # Adjust if needed
+BALL_BBOX_SIZE = 100  # Adjust if needed
 
 
 def IoU_box(box1, box2):
