@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import torch
 from sklearn.metrics import average_precision_score
+import numpy as np
 
 BALL_LABEL = 0
 PLAYER_LABEL = 1
@@ -68,7 +69,8 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
         if len(y_true) == 0 or len(set(y_true)) == 1:
             aps[class_id] = 0.0
         else:
-            aps[class_id] = average_precision_score(y_true, y_scores)
+            #aps[class_id] = average_precision_score(y_true, y_scores)
+            aps[class_id] = average_precision_score(y_true, [s.cpu().item() if torch.is_tensor(s) else s for s in y_scores])
 
     aps['mAP'] = np.mean(list(aps.values()))
     return aps
