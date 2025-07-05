@@ -36,7 +36,9 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
     returns: dict {class_id: ap_value, ..., 'mAP': float}
     """
     aps = {}
-    for class_id in [BALL_LABEL, PLAYER_LABEL]:  # [1, 2]
+    class_ids = [BALL_LABEL, PLAYER_LABEL]  # [1, 2]
+
+    for class_id in class_ids:
         y_true = []
         y_scores = []
 
