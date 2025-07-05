@@ -22,7 +22,8 @@ import os
 import argparse
 import tqdm
 
-from image import metric, image
+import metric
+import image
 from misc import utils
 from network import footandball
 from data import soccer_net, augmentation
