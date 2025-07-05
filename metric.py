@@ -28,6 +28,25 @@ def getGT(data, img_height=1080, img_width=1920) -> t.Tuple[np.array, int]:
 
     return gt, len(data)
 
+def IoU_box(box1, box2):
+    """
+    Compute IoU between two boxes in [x1, y1, x2, y2] format
+    """
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+    if inter_area == 0:
+        return 0.0
+
+    box1_area = max(0, (box1[2] - box1[0])) * max(0, (box1[3] - box1[1]))
+    box2_area = max(0, (box2[2] - box2[0])) * max(0, (box2[3] - box2[1]))
+    union_area = box1_area + box2_area - inter_area
+
+    return inter_area / union_area
+
 def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
     """
     detections: list of dicts with keys ['boxes', 'scores', 'labels']
