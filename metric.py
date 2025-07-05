@@ -31,23 +31,21 @@ def IoU_box(box1, box2):
 
 def compute_ap_map(detections, ground_truths, iou_threshold=0.5):
     """
-    Compute AP for each class and mAP.
+    detections: list of dicts with keys ['boxes', 'scores', 'labels']
+    ground_truths: list of dicts with keys ['boxes', 'labels']
+    returns: dict {class_id: ap_value, ..., 'mAP': float}
     """
     aps = {}
-    class_ids = [BALL_LABEL, PLAYER_LABEL]
+    class_ids = [BALL_LABEL, PLAYER_LABEL]  # [1, 2]
 
     for class_id in class_ids:
-        scores = []
-        matches = []
-
-        n_positives = 0
+        y_true = []
+        y_scores = []
 
         for det, gt in zip(detections, ground_truths):
             det_boxes = [b for b, l in zip(det["boxes"], det["labels"]) if l == class_id]
             det_scores = [s for s, l in zip(det["scores"], det["labels"]) if l == class_id]
             gt_boxes = [b for b, l in zip(gt["boxes"], gt["labels"]) if l == class_id]
-
-            n_positives += len(gt_boxes)
             matched = [False] * len(gt_boxes)
 
             for box, score in zip(det_boxes, det_scores):
@@ -59,34 +57,25 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5):
                         iou_max = iou
                         matched_idx = i
                 if iou_max >= iou_threshold and matched_idx != -1 and not matched[matched_idx]:
-                    matches.append(1)  # True positive
+                    y_true.append(1)
                     matched[matched_idx] = True
                 else:
-                    matches.append(0)  # False positive
-                scores.append(score)
+                    y_true.append(0)
+                y_scores.append(score)
 
-        if len(matches) == 0 or n_positives == 0:
+            for m in matched:
+                if not m:
+                    y_true.append(1)
+                    y_scores.append(0)
+
+        if len(y_true) == 0 or len(set(y_true)) == 1:
             aps[class_id] = 0.0
-            continue
+        else:
+            aps[class_id] = average_precision_score(
+                y_true, [s.cpu().item() if torch.is_tensor(s) else s for s in y_scores]
+            )
 
-        # Sort by score descending
-        scores = np.array(scores)
-        matches = np.array(matches)
-        sorted_idxs = np.argsort(-scores)
-        matches = matches[sorted_idxs]
-
-        tp_cumsum = np.cumsum(matches)
-        fp_cumsum = np.cumsum(1 - matches)
-        precisions = tp_cumsum / (tp_cumsum + fp_cumsum + 1e-6)
-        recalls = tp_cumsum / (n_positives + 1e-6)
-
-        ap = 0.0
-        for t in np.linspace(0, 1, 11):
-            p = precisions[recalls >= t].max() if np.any(recalls >= t) else 0
-            ap += p / 11.0
-        aps[class_id] = ap
-
-    aps["mAP"] = np.mean(list(aps.values()))
+    aps['mAP'] = np.mean(list(aps.values()))
     return aps
 
 
