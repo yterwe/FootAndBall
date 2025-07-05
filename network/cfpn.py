@@ -12,19 +12,14 @@ cfg = {
 }
 
 
-def make_modules(cfg, batch_norm=False,in_channels=3):
-    # Each module is a list of sequential layers operating at the same spacial dimension followed by MaxPool2d
+def make_modules(cfg, batch_norm=False, in_channels=3):
     modules = nn.ModuleList()
-    # Number of output channels in each module
     out_channels = []
-
-    
     layers = []
 
     for v in cfg:
         if v == 'M':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
-            # Create new module with accumulated layers and flush layers list
             modules.append(nn.Sequential(*layers))
             out_channels.append(in_channels)
             layers = []
@@ -37,11 +32,8 @@ def make_modules(cfg, batch_norm=False,in_channels=3):
                 layers += [conv2d, nn.ReLU(inplace=True)]
             in_channels = v
 
-    # 'M' should be the last layer - and all layers should be flushed
     assert len(layers) == 0
-
     return modules, out_channels
-
 
 class FPN(nn.Module):
     def __init__(self, layers, out_channels, lateral_channels, return_layers=None):
