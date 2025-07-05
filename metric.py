@@ -123,8 +123,8 @@ def getGT(xgtf_path: str) -> t.List[t.Dict[str, torch.Tensor]]:
 
     ground_truths = []
     for frame_id in sorted(gt_by_frame.keys()):
-        boxes = torch.tensor(gt_by_frame[frame_id]['boxes'], dtype=torch.float32)
-        labels = torch.tensor(gt_by_frame[frame_id]['labels'], dtype=torch.int64)
+        boxes = [list(map(float, box)) for box in gt_by_frame[frame_id]['boxes']]
+        labels = list(gt_by_frame[frame_id]['labels'])
         ground_truths.append({'boxes': boxes, 'labels': labels})
     return ground_truths
 
