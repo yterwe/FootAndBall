@@ -21,9 +21,27 @@ from data.data_reader import make_dataloaders
 from network.ssd_loss import SSDLoss
 from misc.config import Params
 from misc import utils
+import matplotlib.pyplot as plt
 
 MODEL_FOLDER = 'models'
 
+def plot_training_stats(training_stats, model_name):
+    metrics = ['loss', 'loss_ball_c', 'loss_player_c', 'loss_player_l']
+    for metric in metrics:
+        plt.figure()
+        for phase in training_stats:
+            values = [epoch_stats[metric] for epoch_stats in training_stats[phase]]
+            plt.plot(values, label=phase)
+        plt.title(f'{metric} over epochs')
+        plt.xlabel('Epoch')
+        plt.ylabel(metric)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        filename = f'{model_name}_{metric}.png'
+        plt.savefig(filename)
+        print(f'Saved: {filename}')
+        plt.close()
 
 def train_model(model, optimizer, scheduler, num_epochs, dataloaders, device, model_name):
     # Weight for components of the loss function.
@@ -110,6 +128,8 @@ def train_model(model, optimizer, scheduler, num_epochs, dataloaders, device, mo
 
     with open('training_stats_{}.pickle'.format(model_name), 'wb') as handle:
         pickle.dump(training_stats, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    plot_training_stats(training_stats, model_name)
 
     return training_stats
 
