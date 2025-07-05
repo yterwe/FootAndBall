@@ -36,6 +36,7 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
     """
 
     aps = {}
+    class_names = {0: 'Ball', 1: 'Player'}
 
     for class_id in range(num_classes):
         y_true = []
