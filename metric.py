@@ -6,8 +6,8 @@ import torch
 from sklearn.metrics import average_precision_score
 import numpy as np
 
-BALL_LABEL = 0
-PLAYER_LABEL = 1
+BALL_LABEL = 1
+PLAYER_LABEL = 2
 BALL_BBOX_SIZE = 100  # Adjust if needed
 
 
@@ -36,7 +36,7 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
     returns: dict {class_id: ap_value, ..., 'mAP': float}
     """
     aps = {}
-    for class_id in range(num_classes):
+    for class_id in [BALL_LABEL, PLAYER_LABEL]:  # [1, 2]
         y_true = []
         y_scores = []
 
@@ -44,7 +44,7 @@ def compute_ap_map(detections, ground_truths, iou_threshold=0.5, num_classes=2):
             det_boxes = [b for b, l in zip(det["boxes"], det["labels"]) if l == class_id]
             det_scores = [s for s, l in zip(det["scores"], det["labels"]) if l == class_id]
             gt_boxes = [b for b, l in zip(gt["boxes"], gt["labels"]) if l == class_id]
-            print(f"Class {class_id}: {len(det_boxes)} detections vs {len(gt_boxes)} GT")
+            #print(f"Class {class_id}: {len(det_boxes)} detections vs {len(gt_boxes)} GT")
             matched = [False] * len(gt_boxes)
 
             for box, score in zip(det_boxes, det_scores):
