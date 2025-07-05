@@ -327,7 +327,9 @@ def build_footandball_detector1(phase='train', max_player_detections=100, max_ba
     # phase: 'train' or 'test'
     assert phase in ['train', 'test', 'detect']
 
-    layers, out_channels = fpn.make_modules(fpn.cfg['X'], batch_norm=True)
+    num_frames = 3
+    input_channels = 3 * num_frames
+    layers, out_channels = fpn.make_modules(fpn.cfg['X'], batch_norm=True, in_channels=input_channels)
     # FPN returns 3 tensors for each input: one dowscaled 4 times in each input dimension, the other downscaled 16 times
     # tensor with 2 channels downscaled 4 times is used for ball detection
     # tensor with 2 channels downscaled 16 times is used for the player detection (1 location corresponds to 16x16 pixel block)
