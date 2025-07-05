@@ -70,9 +70,9 @@ def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
             detections = model(img_tensor)[0]
 
             frame_detections = {
-                "boxes": detections["boxes"],
-                "scores": detections["scores"],
-                "labels": detections["labels"]
+                "boxes": [box.tolist() for box in detections["boxes"]],
+                "scores": [score.item() for score in detections["scores"]],
+                "labels": [label.item() for label in detections["labels"]]
             }
             all_detections.append(frame_detections)
 
