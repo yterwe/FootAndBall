@@ -15,6 +15,7 @@ import typing as t
 import argparse
 import json
 
+import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import cv2
