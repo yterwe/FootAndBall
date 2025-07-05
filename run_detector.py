@@ -121,8 +121,9 @@ if __name__ == '__main__':
         gt_by_frame, gt_start_frame = metric.getGT(args.metric_path)
         print(f"Loaded {len(gt_by_frame)} frames of ground truth. Start from frame {gt_start_frame}")
 
-        # Skip initial frames in video before ground truth starts
-        all_detections = all_detections[gt_start_frame:]
+       if gt_start_frame > 0:
+        padding = [{'boxes': [], 'labels': []}] * gt_start_frame
+        gt_by_frame = padding + gt_by_frame
 
         # Ensure detection and GT have same number of frames
         if len(all_detections) > len(gt_by_frame):
