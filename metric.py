@@ -125,11 +125,14 @@ def getGT(xgtf_path: str) -> t.List[t.Dict[str, torch.Tensor]]:
                     gt_by_frame[frame_id]['labels'].append(PLAYER_LABEL)
 
     ground_truths = []
+    frame_ids = sorted(gt_by_frame.keys())
+    #print(f"[DEBUG] Ground truth frame range: {frame_ids[0]} ~ {frame_ids[-1]}")
+
     for frame_id in sorted(gt_by_frame.keys()):
         boxes = [list(map(float, box)) for box in gt_by_frame[frame_id]['boxes']]
         labels = list(gt_by_frame[frame_id]['labels'])
         ground_truths.append({'boxes': boxes, 'labels': labels})
-    return ground_truths
+    return ground_truths, frame_ids[0]
 
 
 def IoU(result, gt):
