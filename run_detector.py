@@ -1,10 +1,3 @@
-# FootAndBall: Integrated Player and Ball Detector
-# Jacek Komorowski, Grzegorz Kurzejamski, Grzegorz Sarwas
-# Copyright (c) 2020 Sport Algorithmics and Gaming
-
-#
-# Run FootAndBall detector on ISSIA-CNR Soccer videos
-#
 import torch
 import cv2
 import os
@@ -15,7 +8,8 @@ import json
 import network.footandball as footandball
 import data.augmentation as augmentations
 from data.augmentation import PLAYER_LABEL, BALL_LABEL
-import metric  # You must have metric.py in the same folder or PYTHONPATH
+import metric  # Assumes metric.py is in same directory
+
 
 def draw_bboxes(image, detections):
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -33,10 +27,9 @@ def draw_bboxes(image, detections):
             color = (0, 0, 255)
             radius = 25
             cv2.circle(image, (int(x), int(y)), radius, color, 2)
-            cv2.putText(image, '{:0.2f}'.format(score), (max(0, int(x - radius)), max(0, (y - radius - 10))), font, 1,
-                        color, 2)
-
+            cv2.putText(image, '{:0.2f}'.format(score), (max(0, int(x - radius)), max(0, (y - radius - 10))), font, 1, color, 2)
     return image
+
 
 def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
     model.print_summary(show_architecture=False)
@@ -57,14 +50,14 @@ def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
     (frame_width, frame_height) = (int(sequence.get(cv2.CAP_PROP_FRAME_WIDTH)),
                                    int(sequence.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     n_frames = int(sequence.get(cv2.CAP_PROP_FRAME_COUNT))
-    out_sequence = cv2.VideoWriter(args.out_video, cv2.VideoWriter_fourcc(*'XVID'), fps,
+    out_sequence = cv2.VideoWriter(args.out_video, cv2.VideoWriter_fourcc(*'mp4v'), fps,
                                    (frame_width, frame_height))
 
     print('Processing video: {}'.format(args.path))
     pbar = tqdm.tqdm(total=n_frames)
 
     all_detections = []
-    all_ground_truths = []
+    frame_idx = 0
 
     while sequence.isOpened():
         ret, frame = sequence.read()
@@ -72,7 +65,6 @@ def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
             break
 
         img_tensor = augmentations.numpy2tensor(frame)
-
         with torch.no_grad():
             img_tensor = img_tensor.unsqueeze(dim=0).to(args.device)
             detections = model(img_tensor)[0]
@@ -82,22 +74,19 @@ def run_detector(model: footandball.FootAndBall, args: argparse.Namespace):
                 "scores": detections["scores"],
                 "labels": detections["labels"]
             }
-            frame_ground_truths = {
-                "boxes": detections["boxes"],  # NOTE: replace this with true GT boxes if available
-                "labels": detections["labels"]
-            }
             all_detections.append(frame_detections)
-            all_ground_truths.append(frame_ground_truths)
 
         frame = draw_bboxes(frame, detections)
         out_sequence.write(frame)
         pbar.update(1)
+        frame_idx += 1
 
     pbar.close()
     sequence.release()
     out_sequence.release()
 
-    return all_detections, all_ground_truths
+    return all_detections
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -120,21 +109,36 @@ if __name__ == '__main__':
     assert os.path.exists(args.weights), 'Weights not found'
     assert os.path.exists(args.path), 'Input video not found'
 
-    model = footandball.model_factory(args.model, 'detect', ball_threshold=args.ball_threshold,
+    model = footandball.model_factory(args.model, 'detect',
+                                      ball_threshold=args.ball_threshold,
                                       player_threshold=args.player_threshold)
 
-    all_detections, all_ground_truths = run_detector(model, args)
+    all_detections = run_detector(model, args)
 
-    ap_results = metric.compute_ap_map(all_detections, all_ground_truths)
-    print("\n===== Evaluation Results =====")
-    print(f"Ball AP@0.5:   {ap_results.get(0, 0.0):.4f}")
-    print(f"Player AP@0.5: {ap_results.get(1, 0.0):.4f}")
-    print(f"mAP@0.5:       {ap_results.get('mAP', 0.0):.4f}")
+    # Load ground truth
+    if args.metric_path:
+        print("Loading ground truth from:", args.metric_path)
+        gt_by_frame = metric.getGT(args.metric_path)
+        print(f"Loaded {len(gt_by_frame)} frames of ground truth.")
 
-    with open("ap_results.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "ball_ap": ap_results.get(0, 0.0),
-            "player_ap": ap_results.get(1, 0.0),
-            "mAP@0.5": ap_results.get('mAP', 0.0)
-        }, f, indent=2)
+        # Ensure detection and GT have same number of frames
+        if len(all_detections) > len(gt_by_frame):
+            all_detections = all_detections[:len(gt_by_frame)]
+        elif len(gt_by_frame) > len(all_detections):
+            gt_by_frame = gt_by_frame[:len(all_detections)]
 
+        ap_results = metric.compute_ap_map(all_detections, gt_by_frame)
+
+        print("\n===== Evaluation Results =====")
+        print(f"Ball AP@0.5:   {ap_results.get(0, 0.0):.4f}")
+        print(f"Player AP@0.5: {ap_results.get(1, 0.0):.4f}")
+        print(f"mAP@0.5:       {ap_results.get('mAP', 0.0):.4f}")
+
+        with open("ap_results.json", "w", encoding="utf-8") as f:
+            json.dump({
+                "ball_ap": ap_results.get(0, 0.0),
+                "player_ap": ap_results.get(1, 0.0),
+                "mAP@0.5": ap_results.get('mAP', 0.0)
+            }, f, indent=2)
+    else:
+        print("No metric path provided. Skipping mAP evaluation.")
