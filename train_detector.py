@@ -23,6 +23,7 @@ from misc.config import Params
 from misc import utils
 import matplotlib.pyplot as plt
 import metric
+from data.augmentation import PLAYER_LABEL, BALL_LABEL, BALL_BBOX_SIZE
 
 MODEL_FOLDER = 'models'
 
@@ -144,13 +145,13 @@ def train_model(model, optimizer, scheduler, num_epochs, dataloaders, device, mo
             
                 ap_results = metric.compute_ap_map(all_detections, all_groundtruths)
             
-                print(f'[Validation AP] Ball AP: {ap_results.get(0, 0.0):.4f}, '
-                      f'Player AP: {ap_results.get(1, 0.0):.4f}, '
+                print(f'[Validation AP] Ball AP: {ap_results.get(BALL_LABEL, 0.0):.4f}, '
+                      f'Player AP: {ap_results.get(PLAYER_LABEL, 0.0):.4f}, '
                       f'mAP: {ap_results.get("mAP", 0.0):.4f}')
             
                 # Add to stats so you can plot/save later if needed
-                avg_batch_stats['val_ap_ball'] = ap_results.get(0, 0.0)
-                avg_batch_stats['val_ap_player'] = ap_results.get(1, 0.0)
+                avg_batch_stats['val_ap_ball'] = ap_results.get(BALL_LABEL, 0.0)
+                avg_batch_stats['val_ap_player'] = ap_results.get(PLAYER_LABEL, 0.0)
                 avg_batch_stats['val_map'] = ap_results.get("mAP", 0.0)
 
 
