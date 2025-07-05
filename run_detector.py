@@ -108,7 +108,7 @@ if __name__ == '__main__':
     parser.add_argument('--player_threshold', help='player confidence detection threshold', type=float, default=0.7)
     parser.add_argument('--out_video', help='path to output video', type=str, required=True)
     parser.add_argument('--device', help='device (CPU or CUDA)', type=str, default='cuda:0')
-
+    parser.add_argument('--metric-path', help='Path to ground truth annotation (.xgtf) for evaluation', type=str)
     args = parser.parse_args()
 
     print('Video path: {}'.format(args.path))
